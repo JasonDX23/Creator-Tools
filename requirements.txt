@@ -5,7 +5,6 @@ fastapi
 uvicorn
 python-multipart
 imageio-ffmpeg
-qrcode
-pillow
+'qrcode[pil]'
 requests
 pydantic
