@@ -1,19 +1,25 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import os
 from dotenv import load_dotenv
+
+# Load environment variables FIRST before importing routes
 load_dotenv()
+
+from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+
 from .transcribe import router as transcribe_router
 from .feedback import router as feedback_router
 from .qr_gen import router as qr_router
 
 app = FastAPI(
-    title = 'Creator Tools',
+    title='Creator Tools',
     version='1.0.0'
 )
 
-# =========================
-# CORS
-# =========================
+# Handle Render's HEAD health check ping
+@app.head("/")
+def head_root():
+    return Response(status_code=200)
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,18 +31,13 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    return {
-        "message": "Creator Suite is running"
-    }
-
+    return {"message": "Creator Suite is running"}
 
 @app.get("/health")
 def health_check():
-    return {
-        "status": "healthy"
-    }
+    return {"status": "healthy"}
 
-
+# Route prefixes
 app.include_router(transcribe_router, prefix="/api")
 app.include_router(feedback_router, prefix="/api")
 app.include_router(qr_router, prefix="/api")

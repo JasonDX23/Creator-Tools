@@ -5,10 +5,6 @@ from groq import Groq
 
 router = APIRouter(tags=["Captions"])
 
-# Initialize Groq client using environment variable GROQ_API_KEY
-groq_api_key = os.getenv("GROQ_API_KEY")
-client = Groq(api_key=groq_api_key) if groq_api_key else None
-
 def format_timestamp(seconds: float) -> str:
     """Helper to convert float seconds into SRT timestamp format (HH:MM:SS,mmm)"""
     hours = int(seconds // 3600)
@@ -19,8 +15,12 @@ def format_timestamp(seconds: float) -> str:
 
 @router.post("/captions")
 async def get_captions(file: UploadFile = File(...)):
+    # Retrieve API key dynamically at runtime
+    groq_api_key = os.getenv("GROQ_API_KEY")
     if not groq_api_key:
         raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is not set")
+
+    client = Groq(api_key=groq_api_key)
 
     allowed_exts = (".mp4", ".mov", ".m4a", ".mp3", ".wav", ".mkv", ".avi")
     ext = os.path.splitext(file.filename)[1].lower()
@@ -43,12 +43,17 @@ async def get_captions(file: UploadFile = File(...)):
 
         # Build SRT content string from Groq segments
         srt_lines = []
-        segments = transcription.segments or []
+        segments = getattr(transcription, "segments", []) or []
         
         for idx, segment in enumerate(segments, start=1):
-            start_str = format_timestamp(segment["start"])
-            end_str = format_timestamp(segment["end"])
-            text = segment["text"].strip()
+            # Groq segments are dicts or objects depending on SDK version
+            start_val = segment["start"] if isinstance(segment, dict) else segment.start
+            end_val = segment["end"] if isinstance(segment, dict) else segment.end
+            text_val = segment["text"] if isinstance(segment, dict) else segment.text
+
+            start_str = format_timestamp(start_val)
+            end_str = format_timestamp(end_val)
+            text = text_val.strip()
             
             srt_lines.append(f"{idx}\n{start_str} --> {end_str}\n{text}\n")
 
