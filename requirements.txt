@@ -8,4 +8,4 @@ requests
 pydantic
 dotenv
 groq
-moviepy
+moviepy==1.0.3
