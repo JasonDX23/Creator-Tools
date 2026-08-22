@@ -3,7 +3,7 @@ from io import BytesIO
 from fastapi import APIRouter, Response
 import segno
 
-router = APIRouter(prefix='/qr', tags=['image'])
+router = APIRouter(tags=['image'])
 
 @lru_cache(maxsize=1024)
 def generate_qr_bytes(url: str) -> bytes:
