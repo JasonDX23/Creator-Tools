@@ -1,0 +1,27 @@
+services:
+  # ----------------------------------------------------
+  # 1. FastAPI Backend Service
+  # ----------------------------------------------------
+  - type: web
+    name: creator-tools-backend
+    env: python
+    region: singapore # Choose region closest to you
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: DISCORD_WEBHOOK_URL
+        sync: false # Set this in Render Dashboard
+
+  # ----------------------------------------------------
+  # 2. Vite React Frontend Service
+  # ----------------------------------------------------
+  - type: web
+    name: creator-tools-frontend
+    env: static
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: "./frontend/dist"
+    routes:
+      - type: rewrite
+        source: "/*"
+        destination: "/index.html"

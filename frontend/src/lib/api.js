@@ -1,8 +1,8 @@
-export const API_BASE = '' 
+// Replace with your actual Render backend URL once deployed
+export const API_BASE = import.meta.env.VITE_API_BASE || 'https://creator-tools-backend.onrender.com'
 
 // QR Generator
 export async function fetchQrCodeBlob(url) {
-  // Requests /api/qrcode (which Vercel sends to FastAPI as /api/qrcode)
   const res = await fetch(
     `${API_BASE}/api/qrcode?url=${encodeURIComponent(url)}`
   )
@@ -17,7 +17,6 @@ export async function fetchCaptions(file) {
   const formData = new FormData()
   formData.append('file', file)
 
-  // Requests /api/captions
   const res = await fetch(`${API_BASE}/api/captions`, {
     method: 'POST',
     body: formData,
