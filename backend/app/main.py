@@ -2,9 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 load_dotenv()
-from .qr_gen import router as qr_code_router
-from .transcribe import router as caption_router
+from .transcribe import router as transcribe_router
 from .feedback import router as feedback_router
+from .qr_gen import router as qr_router
 
 app = FastAPI(
     title = 'Creator Tools',
@@ -37,6 +37,6 @@ def health_check():
     }
 
 
-app.include_router(qr_code_router, prefix='/api')
-app.include_router(caption_router, prefix='/api')
-app.include_router(feedback_router, prefix='/api')
+app.include_router(transcribe_router, prefix="/api")
+app.include_router(feedback_router, prefix="/api")
+app.include_router(qr_router, prefix="/api")
