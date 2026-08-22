@@ -1,10 +1,11 @@
+--find-links https://download.pytorch.org/whl/cpu
+torch
+openai-whisper
 fastapi
 uvicorn
-openai-whisper
 python-multipart
-python-dotenv
-requests
 imageio-ffmpeg
-pydantic
 qrcode
 pillow
+requests
+pydantic
