@@ -1,10 +1,10 @@
-// 1. Export API_BASE so Feedback.jsx can import it
 export const API_BASE = '' 
 
-// 2. Updated paths to include /api prefix
+// QR Generator
 export async function fetchQrCodeBlob(url) {
+  // Requests /api/qrcode (which Vercel sends to FastAPI as /api/qrcode)
   const res = await fetch(
-    `${API_BASE}/api/qr/qrcode?url=${encodeURIComponent(url)}`
+    `${API_BASE}/api/qrcode?url=${encodeURIComponent(url)}`
   )
   if (!res.ok) {
     throw new Error(`QR generation failed (${res.status})`)
@@ -17,7 +17,8 @@ export async function fetchCaptions(file) {
   const formData = new FormData()
   formData.append('file', file)
 
-  const res = await fetch(`${API_BASE}/api/transcript/captions`, {
+  // Requests /api/captions
+  const res = await fetch(`${API_BASE}/api/captions`, {
     method: 'POST',
     body: formData,
   })
@@ -29,5 +30,5 @@ export async function fetchCaptions(file) {
     )
   }
 
-  return res.json() // Returns { filename: string, srt: string }
+  return res.json()
 }
