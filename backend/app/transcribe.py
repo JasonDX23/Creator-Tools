@@ -3,7 +3,7 @@ import tempfile
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from groq import Groq
 
-router = APIRouter(prefix="/transcript", tags=["Captions"])
+router = APIRouter(tags=["Captions"])
 
 # Initialize Groq client using environment variable GROQ_API_KEY
 groq_api_key = os.getenv("GROQ_API_KEY")

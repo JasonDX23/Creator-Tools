@@ -3,7 +3,7 @@ import requests
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/feedback", tags=["Feedback"])
+router = APIRouter(tags=["Feedback"])
 
 class FeedbackRequest(BaseModel):
     subject: str
