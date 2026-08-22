@@ -1,6 +1,5 @@
 --find-links https://download.pytorch.org/whl/cpu
 torch
-openai-whisper
 fastapi
 uvicorn
 python-multipart
@@ -10,3 +9,4 @@ pillow
 requests
 pydantic
 dotenv
+groq
