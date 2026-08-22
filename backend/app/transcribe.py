@@ -17,7 +17,7 @@ def format_timestamp(seconds: float) -> str:
     millis = int((seconds - int(seconds)) * 1000)
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
-@router.post("/captions")
+@router.post("/api/captions")
 async def get_captions(file: UploadFile = File(...)):
     if not groq_api_key:
         raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is not set")

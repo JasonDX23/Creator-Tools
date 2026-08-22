@@ -13,7 +13,7 @@ def generate_qr_bytes(url: str) -> bytes:
     img.save(buffer, kind="png", scale=8)
     return buffer.getvalue()
 
-@router.get('/qrcode')
+@router.get('/api/qrcode')
 def get_qrcode(url: str):
     image_bytes = generate_qr_bytes(url)
     return Response(content=image_bytes, media_type="image/png")

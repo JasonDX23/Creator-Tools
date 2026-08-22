@@ -9,7 +9,7 @@ class FeedbackRequest(BaseModel):
     subject: str
     message: str
 
-@router.post("/send")
+@router.post("/api/send")
 def send_feedback(data: FeedbackRequest):
     webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
 
