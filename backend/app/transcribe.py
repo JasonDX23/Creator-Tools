@@ -2,6 +2,7 @@ import os
 import tempfile
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from groq import Groq
+from moviepy.editor import AudioFileClip
 
 router = APIRouter(tags=["Captions"])
 
@@ -15,7 +16,6 @@ def format_timestamp(seconds: float) -> str:
 
 @router.post("/captions")
 async def get_captions(file: UploadFile = File(...)):
-    # Retrieve API key dynamically at runtime
     groq_api_key = os.getenv("GROQ_API_KEY")
     if not groq_api_key:
         raise HTTPException(status_code=500, detail="GROQ_API_KEY environment variable is not set")
@@ -32,21 +32,34 @@ async def get_captions(file: UploadFile = File(...)):
         tmp_file.write(content)
         tmp_path = tmp_file.name
 
+    audio_path = tmp_path
+
     try:
-        # Request verbose json from Groq to get segment timing for SRT formatting
-        with open(tmp_path, "rb") as audio_file:
+        # If input file is a video, extract the audio stream to a lightweight MP3 file
+        if ext in (".mp4", ".mov", ".mkv", ".avi"):
+            audio_path = tmp_path + ".mp3"
+            video_clip = AudioFileClip(tmp_path)
+            video_clip.write_audiofile(audio_path, logger=None)
+            video_clip.close()
+
+        # Check payload size against Groq's 25 MB cap
+        if os.path.getsize(audio_path) > 25 * 1024 * 1024:
+            raise HTTPException(
+                status_code=400, 
+                detail="Extracted audio exceeds Groq's 25 MB limit. Please use a shorter video."
+            )
+
+        with open(audio_path, "rb") as audio_file:
             transcription = client.audio.transcriptions.create(
-                file=(file.filename, audio_file.read()),
+                file=(os.path.basename(audio_path), audio_file.read()),
                 model="whisper-large-v3",
                 response_format="verbose_json",
             )
 
-        # Build SRT content string from Groq segments
         srt_lines = []
         segments = getattr(transcription, "segments", []) or []
         
         for idx, segment in enumerate(segments, start=1):
-            # Groq segments are dicts or objects depending on SDK version
             start_val = segment["start"] if isinstance(segment, dict) else segment.start
             end_val = segment["end"] if isinstance(segment, dict) else segment.end
             text_val = segment["text"] if isinstance(segment, dict) else segment.text
@@ -58,12 +71,14 @@ async def get_captions(file: UploadFile = File(...)):
             srt_lines.append(f"{idx}\n{start_str} --> {end_str}\n{text}\n")
 
         srt_content = "\n".join(srt_lines)
-
         return {"filename": file.filename, "srt": srt_content}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Groq API Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Transcription Error: {str(e)}")
 
     finally:
+        # Cleanup temporary files
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+        if audio_path != tmp_path and os.path.exists(audio_path):
+            os.remove(audio_path)
