@@ -9,10 +9,22 @@ export default function VideoConverter({ onBack }) {
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState('')
   const [downloadUrl, setDownloadUrl] = useState('')
+  const [progress, setProgress] = useState(0)
 
   useEffect(() => () => {
     if (downloadUrl) URL.revokeObjectURL(downloadUrl)
   }, [downloadUrl])
+
+  useEffect(() => {
+    if (status !== 'loading') return undefined
+
+    // Upload progress is exact. Once FFmpeg starts, its work happens server-side,
+    // so gently advance toward completion while the response is pending.
+    const interval = setInterval(() => {
+      setProgress((current) => current < 95 ? current + 1 : current)
+    }, 700)
+    return () => clearInterval(interval)
+  }, [status])
 
   function chooseFile(event) {
     const selected = event.target.files[0]
@@ -29,11 +41,15 @@ export default function VideoConverter({ onBack }) {
     if (!file) return
     setStatus('loading')
     setError('')
+    setProgress(0)
     if (downloadUrl) URL.revokeObjectURL(downloadUrl)
     setDownloadUrl('')
 
     try {
-      const blob = await convertVideo(file, format)
+      const blob = await convertVideo(file, format, (uploaded) => {
+        setProgress(Math.round(uploaded * 35))
+      })
+      setProgress(100)
       setDownloadUrl(URL.createObjectURL(blob))
       setStatus('done')
     } catch (err) {
@@ -83,7 +99,19 @@ export default function VideoConverter({ onBack }) {
       <div className="relative mt-8">
         <span className="absolute -top-2 left-8 h-6 w-20 rounded-t-md border-[3px] border-b-0 border-ink bg-yolk" />
         <div className="relative flex min-h-44 flex-col items-center justify-center gap-3 rounded-card border-[3px] border-ink bg-cream p-6 shadow-hard-lg">
-          {status === 'loading' ? <p className="text-center font-medium">Converting your video. This can take a moment…</p> : downloadUrl ? <>
+          {status === 'loading' ? <div className="w-full text-center">
+            <div className="mb-2 flex items-center justify-between text-xs font-bold">
+              <span>{progress < 35 ? 'Uploading video...' : 'Converting video...'}</span>
+              <span>{progress}%</span>
+            </div>
+            <div className="h-6 w-full overflow-hidden rounded-full border-[3px] border-ink bg-white p-0.5 shadow-hard-sm">
+              <div
+                className="h-full rounded-full border-r-[2px] border-ink bg-yolk transition-all duration-300 ease-out"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="mt-3 text-sm font-medium text-ink/65">This can take a moment for larger videos.</p>
+          </div> : downloadUrl ? <>
             <p className="text-center font-medium">Your .{format} video is ready.</p>
             <a href={downloadUrl} download={downloadName} className="press-el rounded-tile border-[3px] border-ink bg-yolk px-5 py-2.5 font-display font-bold shadow-hard-sm">Download video</a>
           </> : <p className="text-center text-sm font-medium text-ink/50">Pick a video and its new format to get started.</p>}

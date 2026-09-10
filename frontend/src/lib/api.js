@@ -33,20 +33,35 @@ export async function fetchCaptions(file) {
 }
 
 // Video converter
-export async function convertVideo(file, outputFormat) {
+export function convertVideo(file, outputFormat, onUploadProgress) {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('output_format', outputFormat)
 
-  const res = await fetch(`${API_BASE}/api/convert`, {
-    method: 'POST',
-    body: formData,
+  // XMLHttpRequest exposes upload progress; fetch does not yet do so reliably.
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('POST', `${API_BASE}/api/convert`)
+    request.responseType = 'blob'
+
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable && onUploadProgress) {
+        onUploadProgress(event.loaded / event.total)
+      }
+    }
+
+    request.onerror = () => reject(new Error('Network error while converting video'))
+    request.onload = async () => {
+      if (request.status >= 200 && request.status < 300) {
+        resolve(request.response)
+        return
+      }
+
+      const message = await request.response.text()
+        .then((text) => JSON.parse(text).detail)
+        .catch(() => '')
+      reject(new Error(message || `Conversion failed (${request.status})`))
+    }
+    request.send(formData)
   })
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}))
-    throw new Error(errorData.detail || `Conversion failed (${res.status})`)
-  }
-
-  return res.blob()
 }
