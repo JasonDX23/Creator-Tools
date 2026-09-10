@@ -18,6 +18,14 @@ const MODULES = [
     disabled: false,
   },
   {
+    key: 'convert',
+    title: 'Video Converter',
+    meta: 'Convert MP4, MOV, WebM and more',
+    icon: '🎬',
+    tabColor: '#2FD675',
+    disabled: false,
+  },
+  {
     key: 'feedback',
     title: 'Feedback & Ideas',
     meta: 'Submit feature requests & ideas',

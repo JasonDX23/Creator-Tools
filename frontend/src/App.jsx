@@ -3,6 +3,7 @@ import Home from './pages/Home'
 import QrGenerator from './pages/QrGenerator'
 import AutoCaptions from './pages/AutoCaptions'
 import Feedback from './pages/Feedback'
+import VideoConverter from './pages/VideoConverter'
 
 export default function App() {
   const [screen, setScreen] = useState('home')
@@ -37,6 +38,7 @@ export default function App() {
   if (screen === 'qr') return <QrGenerator onBack={goBackHome} />
   if (screen === 'captions') return <AutoCaptions onBack={goBackHome} />
   if (screen === 'feedback') return <Feedback onBack={goBackHome} />
+  if (screen === 'convert') return <VideoConverter onBack={goBackHome} />
 
   return <Home onOpenModule={(key) => navigateTo(key)} />
 }

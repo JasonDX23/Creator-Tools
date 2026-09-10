@@ -31,3 +31,22 @@ export async function fetchCaptions(file) {
 
   return res.json()
 }
+
+// Video converter
+export async function convertVideo(file, outputFormat) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('output_format', outputFormat)
+
+  const res = await fetch(`${API_BASE}/api/convert`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}))
+    throw new Error(errorData.detail || `Conversion failed (${res.status})`)
+  }
+
+  return res.blob()
+}
