@@ -21,6 +21,11 @@ MEDIA_TYPES = {"mp4": "video/mp4", "mov": "video/quicktime", "mkv": "video/x-mat
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_VIDEO_UPLOAD_BYTES", str(500 * 1024 * 1024)))
 CONVERSION_TIMEOUT_SECONDS = int(os.getenv("VIDEO_CONVERSION_TIMEOUT_SECONDS", "900"))
+# Preserve source dimensions, but do not let simultaneous FFmpeg processes exhaust
+# a small web-service instance. These can be raised on a larger worker instance.
+MAX_CONCURRENT_CONVERSIONS = int(os.getenv("MAX_CONCURRENT_VIDEO_CONVERSIONS", "1"))
+FFMPEG_THREADS = int(os.getenv("FFMPEG_THREADS", "1"))
+conversion_slots = asyncio.Semaphore(MAX_CONCURRENT_CONVERSIONS)
 
 
 def remove_files(*paths: str) -> None:
@@ -55,6 +60,19 @@ def codec_arguments(target_ext: str) -> list[str]:
     return [*stream_map, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac"]
 
 
+async def run_ffmpeg(command: list[str]) -> subprocess.CompletedProcess[str]:
+    """Run only a bounded number of memory-intensive encodes at once."""
+    async with conversion_slots:
+        return await asyncio.to_thread(
+            subprocess.run,
+            command,
+            capture_output=True,
+            text=True,
+            timeout=CONVERSION_TIMEOUT_SECONDS,
+            check=False,
+        )
+
+
 @router.post("/convert")
 async def convert_video(
     background_tasks: BackgroundTasks,
@@ -81,13 +99,17 @@ async def convert_video(
         if await save_upload(file, input_path) == 0:
             raise HTTPException(400, "The uploaded video is empty")
 
-        command = [imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-nostdin", "-y", "-i", input_path, *codec_arguments(target_ext)]
+        command = [
+            imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-nostdin", "-y",
+            "-threads", str(FFMPEG_THREADS), "-i", input_path,
+            *codec_arguments(target_ext), "-threads", str(FFMPEG_THREADS),
+        ]
         if target_ext in {"mp4", "mov"}:
             command.extend(["-movflags", "+faststart"])
         command.append(output_path)
 
         # Do not block FastAPI's event loop while FFmpeg is using the CPU.
-        result = await asyncio.to_thread(subprocess.run, command, capture_output=True, text=True, timeout=CONVERSION_TIMEOUT_SECONDS, check=False)
+        result = await run_ffmpeg(command)
         if result.returncode != 0 or not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
             diagnostic = (result.stderr or result.stdout or "no FFmpeg output").strip()
             logger.error("FFmpeg conversion failed (exit %s): %s", result.returncode, diagnostic[-4000:])

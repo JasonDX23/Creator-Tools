@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { convertVideo } from '../lib/api'
+import { convertInBrowser } from '../lib/browserConvert'
 
 const FORMATS = ['mp4', 'mov', 'mkv', 'webm', 'avi']
 
@@ -46,8 +46,8 @@ export default function VideoConverter({ onBack }) {
     setDownloadUrl('')
 
     try {
-      const blob = await convertVideo(file, format, (uploaded) => {
-        setProgress(Math.round(uploaded * 35))
+      const blob = await convertInBrowser(file, format, (converted) => {
+        setProgress(converted)
       })
       setProgress(100)
       setDownloadUrl(URL.createObjectURL(blob))
@@ -101,7 +101,7 @@ export default function VideoConverter({ onBack }) {
         <div className="relative flex min-h-44 flex-col items-center justify-center gap-3 rounded-card border-[3px] border-ink bg-cream p-6 shadow-hard-lg">
           {status === 'loading' ? <div className="w-full text-center">
             <div className="mb-2 flex items-center justify-between text-xs font-bold">
-              <span>{progress < 35 ? 'Uploading video...' : 'Converting video...'}</span>
+              <span>{progress === 0 ? 'Preparing converter...' : 'Converting on this device...'}</span>
               <span>{progress}%</span>
             </div>
             <div className="h-6 w-full overflow-hidden rounded-full border-[3px] border-ink bg-white p-0.5 shadow-hard-sm">
@@ -110,7 +110,7 @@ export default function VideoConverter({ onBack }) {
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <p className="mt-3 text-sm font-medium text-ink/65">This can take a moment for larger videos.</p>
+            <p className="mt-3 text-sm font-medium text-ink/65">Your video stays on this device. Larger videos can take a moment.</p>
           </div> : downloadUrl ? <>
             <p className="text-center font-medium">Your .{format} video is ready.</p>
             <a href={downloadUrl} download={downloadName} className="press-el rounded-tile border-[3px] border-ink bg-yolk px-5 py-2.5 font-display font-bold shadow-hard-sm">Download video</a>
