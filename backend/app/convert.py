@@ -47,7 +47,9 @@ async def save_upload(upload: UploadFile, destination: str) -> int:
 
 def codec_arguments(target_ext: str) -> list[str]:
     # Exclude data, subtitle, and attachment streams that can break remuxing.
-    stream_map = ["-map", "0:v:0", "-map", "0:a?", "-pix_fmt", "yuv420p"]
+    # `0:a?` maps *every* audio track. iPhone videos can include an APAC spatial
+    # audio track that FFmpeg cannot decode, so retain only the first audio track.
+    stream_map = ["-map", "0:v:0", "-map", "0:a:0?", "-pix_fmt", "yuv420p"]
     if target_ext == "webm":
         return [*stream_map, "-c:v", "libvpx-vp9", "-crf", "32", "-b:v", "0", "-c:a", "libopus"]
     return [*stream_map, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac"]
