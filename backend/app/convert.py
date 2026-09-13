@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import os
 import subprocess
 import tempfile
@@ -8,19 +10,47 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Uploa
 from fastapi.responses import FileResponse
 
 router = APIRouter(tags=["Video converter"])
+logger = logging.getLogger(__name__)
 
-# These are container formats that FFmpeg can reliably create with the bundled binary.
 OUTPUT_FORMATS = {"mp4", "mov", "mkv", "webm", "avi"}
 INPUT_EXTENSIONS = {
     ".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".flv", ".wmv",
     ".mpeg", ".mpg", ".3gp", ".ts", ".mts",
 }
+MEDIA_TYPES = {"mp4": "video/mp4", "mov": "video/quicktime", "mkv": "video/x-matroska", "webm": "video/webm", "avi": "video/x-msvideo"}
+UPLOAD_CHUNK_SIZE = 1024 * 1024
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_VIDEO_UPLOAD_BYTES", str(500 * 1024 * 1024)))
+CONVERSION_TIMEOUT_SECONDS = int(os.getenv("VIDEO_CONVERSION_TIMEOUT_SECONDS", "900"))
 
 
-def remove_files(*paths):
+def remove_files(*paths: str) -> None:
+    """Best-effort cleanup for request-specific temporary files."""
     for path in paths:
-        if path and os.path.exists(path):
-            os.remove(path)
+        if path:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not remove temporary conversion file: %s", path)
+
+
+async def save_upload(upload: UploadFile, destination: str) -> int:
+    """Stream a video to disk rather than holding an entire upload in RAM."""
+    bytes_written = 0
+    with open(destination, "wb") as output:
+        while chunk := await upload.read(UPLOAD_CHUNK_SIZE):
+            bytes_written += len(chunk)
+            if bytes_written > MAX_UPLOAD_BYTES:
+                raise HTTPException(413, f"Video is too large. The limit is {MAX_UPLOAD_BYTES // 1048576} MB.")
+            output.write(chunk)
+    return bytes_written
+
+
+def codec_arguments(target_ext: str) -> list[str]:
+    # Exclude data, subtitle, and attachment streams that can break remuxing.
+    stream_map = ["-map", "0:v:0", "-map", "0:a?", "-pix_fmt", "yuv420p"]
+    if target_ext == "webm":
+        return [*stream_map, "-c:v", "libvpx-vp9", "-crf", "32", "-b:v", "0", "-c:a", "libopus"]
+    return [*stream_map, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac"]
 
 
 @router.post("/convert")
@@ -29,57 +59,51 @@ async def convert_video(
     file: UploadFile = File(...),
     output_format: str = Form(...),
 ):
-    """Convert an uploaded video and return it as a downloadable file."""
+    """Convert one uploaded video and return it as a downloadable file."""
     source_name = file.filename or "video"
     source_ext = Path(source_name).suffix.lower()
     target_ext = output_format.lower().lstrip(".")
-
     if source_ext not in INPUT_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Unsupported input video format")
+        raise HTTPException(400, "Unsupported input video format")
     if target_ext not in OUTPUT_FORMATS:
-        raise HTTPException(status_code=400, detail="Unsupported output video format")
+        raise HTTPException(400, "Unsupported output video format")
 
-    input_handle = tempfile.NamedTemporaryFile(delete=False, suffix=source_ext)
-    input_path = input_handle.name
-    input_handle.close()
-    output_path = f"{input_path}.{target_ext}"
-
+    input_path = output_path = ""
     try:
-        with open(input_path, "wb") as destination:
-            destination.write(await file.read())
+        with tempfile.NamedTemporaryFile(delete=False, suffix=source_ext) as input_file:
+            input_path = input_file.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{target_ext}") as output_file:
+            output_path = output_file.name
+        remove_files(output_path)  # FFmpeg must create this file itself.
 
-        # H.264/AAC offers broad compatibility for MP4, MOV, MKV and AVI.
-        # WebM requires its native VP9/Opus codecs.
-        if target_ext == "webm":
-            codecs = ["-c:v", "libvpx-vp9", "-c:a", "libopus"]
-        else:
-            codecs = ["-c:v", "libx264", "-c:a", "aac"]
+        if await save_upload(file, input_path) == 0:
+            raise HTTPException(400, "The uploaded video is empty")
 
-        command = [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", input_path, *codecs]
-        # This atom placement option is specific to QuickTime/MP4 containers.
+        command = [imageio_ffmpeg.get_ffmpeg_exe(), "-hide_banner", "-nostdin", "-y", "-i", input_path, *codec_arguments(target_ext)]
         if target_ext in {"mp4", "mov"}:
             command.extend(["-movflags", "+faststart"])
         command.append(output_path)
-        result = subprocess.run(
-            command, capture_output=True, text=True, timeout=900, check=False
-        )
-        if result.returncode != 0 or not os.path.exists(output_path):
-            raise HTTPException(status_code=422, detail="FFmpeg could not convert this video")
 
-        download_name = f"{Path(source_name).stem}.{target_ext}"
-        background_tasks.add_task(remove_files, input_path, output_path)
-        return FileResponse(
-            output_path,
-            media_type="application/octet-stream",
-            filename=download_name,
-            background=background_tasks,
-        )
+        # Do not block FastAPI's event loop while FFmpeg is using the CPU.
+        result = await asyncio.to_thread(subprocess.run, command, capture_output=True, text=True, timeout=CONVERSION_TIMEOUT_SECONDS, check=False)
+        if result.returncode != 0 or not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
+            diagnostic = (result.stderr or result.stdout or "no FFmpeg output").strip()
+            logger.error("FFmpeg conversion failed (exit %s): %s", result.returncode, diagnostic[-4000:])
+            raise HTTPException(422, "FFmpeg could not convert this video")
+
+        download_name = f"{Path(source_name).stem or 'video'}.{target_ext}"
+        response_input_path, response_output_path = input_path, output_path
+        background_tasks.add_task(remove_files, response_input_path, response_output_path)
+        input_path = output_path = ""  # The response background task now owns cleanup.
+        return FileResponse(response_output_path, media_type=MEDIA_TYPES[target_ext], filename=download_name, background=background_tasks)
     except subprocess.TimeoutExpired:
-        remove_files(input_path, output_path)
-        raise HTTPException(status_code=408, detail="Conversion timed out")
+        logger.warning("Video conversion timed out after %s seconds", CONVERSION_TIMEOUT_SECONDS)
+        raise HTTPException(408, "Conversion timed out")
     except HTTPException:
-        remove_files(input_path, output_path)
         raise
     except Exception:
+        logger.exception("Video conversion failed before FFmpeg completed")
+        raise HTTPException(500, "Video conversion failed")
+    finally:
+        await file.close()
         remove_files(input_path, output_path)
-        raise HTTPException(status_code=500, detail="Video conversion failed")
